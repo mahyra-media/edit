@@ -1,0 +1,215 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { EPISODES, SERIES } from '../episodes/index.js';
+import { buildEpisode } from '../engine/build.js';
+import { validateEpisode } from '../engine/validate.js';
+import { AudioEngine } from '../engine/audio.js';
+import { startRecording, downloadBlob } from '../engine/recorder.js';
+import { CHARACTERS } from '../data/characters.js';
+import { LOCATIONS } from '../data/locations.js';
+import { Studio } from '../scene/Studio.jsx';
+
+const CAM = { wide: 'Lebar', medium: 'Medium', close: 'Close-up', xclose: 'Extreme CU', ots: 'Over-shoulder', low: 'Low', high: 'High', insert: 'Insert', free: 'Bebas' };
+
+export default function App() {
+  const audio = useMemo(() => new AudioEngine(), []);
+  const store = useRef({ t: 0, playing: false, frame: null, onEnd: null }).current;
+  const canvasRef = useRef(null);
+  const recRef = useRef(null);
+
+  const [epIndex, setEpIndex] = useState(0);
+  const [durations, setDurations] = useState({});
+  const [audioInfo, setAudioInfo] = useState(null);
+  const [status, setStatus] = useState({});
+  const [playing, setPlaying] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [t, setT] = useState(0);
+  const [lastRender, setLastRender] = useState(null);
+
+  const raw = EPISODES[epIndex];
+  const ep = useMemo(() => buildEpisode(raw, durations), [raw, durations]);
+  const report = useMemo(() => validateEpisode(ep), [ep]);
+
+  // muat audio episode (kalau file ada)
+  useEffect(() => {
+    let alive = true;
+    setAudioInfo(null);
+    audio.preload(buildEpisode(raw)).then((r) => {
+      if (!alive) return;
+      setDurations(r.durations);
+      setAudioInfo(r);
+    });
+    return () => { alive = false; };
+  }, [raw, audio]);
+
+  // perbarui jam UI ~12x per detik
+  useEffect(() => {
+    const id = setInterval(() => setT(store.frame ? store.frame.t : store.t), 80);
+    return () => clearInterval(id);
+  }, [store]);
+
+  const stop = useCallback(async () => {
+    const tt = audio.time();
+    audio.stop();
+    store.playing = false;
+    store.t = Math.min(tt, ep.total);
+    setPlaying(false);
+    if (recRef.current) {
+      const rec = recRef.current;
+      recRef.current = null;
+      setRecording(false);
+      const blob = await rec.stop();
+      const name = `${ep.id}-${ep.title.toLowerCase().replace(/\s+/g, '-')}.${rec.ext}`;
+      setLastRender({ blob, name, url: URL.createObjectURL(blob), size: blob.size });
+    }
+  }, [audio, store, ep]);
+
+  useEffect(() => { store.onEnd = () => { store.t = 0; stop(); }; }, [store, stop]);
+
+  const play = useCallback(async (from = store.t) => {
+    if (from >= ep.total - 0.05) from = 0;
+    store.t = from;
+    await audio.play(ep, from);
+    store.playing = true;
+    setPlaying(true);
+  }, [audio, store, ep]);
+
+  const record = useCallback(async () => {
+    if (!canvasRef.current) return;
+    audio.ensure();
+    store.playing = false;
+    store.t = 0;
+    await new Promise((r) => setTimeout(r, 250)); // biar frame pertama sudah tergambar
+    try {
+      recRef.current = startRecording(canvasRef.current, audio.recDest.stream, 30);
+    } catch (e) {
+      alert(e.message);
+      return;
+    }
+    setRecording(true);
+    setLastRender(null);
+    await play(0);
+  }, [audio, store, play]);
+
+  const seek = (v) => {
+    if (recording) return;
+    if (store.playing) { audio.stop(); store.playing = false; setPlaying(false); }
+    store.t = v;
+    setT(v);
+  };
+
+  const cur = ep.shots.findLast ? ep.shots.findLast((s) => t >= s.t) : [...ep.shots].reverse().find((s) => t >= s.t);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+      if (e.code === 'Space') { e.preventDefault(); if (recording) return; playing ? stop() : play(); }
+      if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
+        const i = cur ? cur.i : 0;
+        const n = Math.max(0, Math.min(ep.shots.length - 1, i + (e.code === 'ArrowRight' ? 1 : -1)));
+        seek(ep.shots[n].t + 0.001);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  const changeEp = (i) => {
+    if (recording) return;
+    audio.stop();
+    store.playing = false;
+    store.t = 0;
+    store.frame = null;
+    setPlaying(false);
+    setDurations({});
+    setStatus({});
+    setEpIndex(i);
+  };
+
+  const onStatus = useCallback((id, s) => setStatus((p) => ({ ...p, [id]: s })), []);
+
+  return (
+    <div className="app">
+      <section className="left">
+        <Studio ep={ep} store={store} audio={audio} onStatus={onStatus} canvasRef={canvasRef} />
+      </section>
+
+      <section className="right">
+        <header>
+          <p className="eyebrow">{SERIES.judul}</p>
+          <h1>Ep {ep.no} · {ep.title}</h1>
+          <p className="muted">{ep.judulUpload}</p>
+        </header>
+
+        <div className="row">
+          <select value={epIndex} onChange={(e) => changeEp(+e.target.value)} disabled={recording}>
+            {EPISODES.map((e, i) => <option key={e.id} value={i}>Ep {e.no} — {e.title}</option>)}
+          </select>
+        </div>
+
+        <div className="transport">
+          <button className="btn primary" disabled={recording} onClick={() => (playing ? stop() : play())}>
+            {playing ? '❚❚ Jeda' : '▶ Putar'}
+          </button>
+          <button className={`btn ${recording ? 'danger' : 'rec'}`} onClick={() => (recording ? stop() : record())}>
+            {recording ? '■ Hentikan rekaman' : '● Rekam episode'}
+          </button>
+          <span className="time">{t.toFixed(1)} / {ep.total.toFixed(1)} dtk</span>
+        </div>
+        <input className="seek" type="range" min={0} max={ep.total} step={0.05} value={t} disabled={recording}
+          onChange={(e) => seek(+e.target.value)} aria-label="Posisi waktu" />
+
+        {lastRender && (
+          <div className="card ok">
+            <strong>Render selesai</strong> · {(lastRender.size / 1048576).toFixed(1)} MB
+            <div className="row">
+              <button className="btn primary" onClick={() => downloadBlob(lastRender.blob, lastRender.name)}>Unduh {lastRender.name}</button>
+              <a className="btn" href={lastRender.url} target="_blank" rel="noreferrer">Buka</a>
+            </div>
+          </div>
+        )}
+
+        <div className={`card ${report.errors.length ? 'bad' : 'ok'}`}>
+          <strong>{report.errors.length ? 'Formula belum lolos' : 'Formula Shorts lolos'}</strong>
+          <ul>
+            {report.errors.map((m) => <li key={m} className="err">{m}</li>)}
+            {report.warns.map((m) => <li key={m}>{m}</li>)}
+            {!report.errors.length && !report.warns.length && <li>Hook, twist, cliffhanger, dan batas 8 kata sudah sesuai.</li>}
+          </ul>
+        </div>
+
+        <div className="card">
+          <strong>Aset</strong>
+          <p className="muted small">
+            Suara: {audioInfo ? `${audioInfo.total - audioInfo.missing}/${audioInfo.total} file ditemukan` : 'memuat...'}
+            {audioInfo?.missing ? ' — yang belum ada memakai lip-sync perkiraan.' : ''}
+          </p>
+          <div className="chips">
+            {ep.castIds.map((id) => (
+              <span key={id} className={`chip ${status[id] || ''}`} style={{ '--c': CHARACTERS[id].color }}>
+                {CHARACTERS[id].name}: {status[id] === 'vrm' ? 'VRM' : status[id] === 'placeholder' ? 'boneka' : status[id] === 'error' ? 'gagal' : '...'}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <ol className="shots">
+          {ep.shots.map((s) => (
+            <li key={s.i}>
+              <button className={cur && cur.i === s.i ? 'on' : ''} onClick={() => seek(s.t + 0.001)} disabled={recording}>
+                <span className="st">{s.t.toFixed(1)}s</span>
+                <span className="sb">
+                  {s.beat && <em className={`beat ${s.beat}`}>{s.beat}</em>}
+                  {LOCATIONS[s.loc].name} · {CAM[s.cam.s || 'wide']}{s.cam.on ? ` ${CHARACTERS[s.cam.on].name}` : ''}
+                  <span className="sl">
+                    {s.hook || s.lines.map((l) => `${l.hideName ? '???' : CHARACTERS[l.who].name}: ${l.text}`).join(' / ') || s.caption || s.pop}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+        <p className="muted small">Spasi = putar/jeda · ← → = pindah shot · Edit naskah di <code>src/episodes/</code>, halaman ter-update otomatis.</p>
+      </section>
+    </div>
+  );
+}
