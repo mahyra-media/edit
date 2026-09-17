@@ -1,0 +1,24 @@
+{
+  "name": "bunga-di-balik-kaca",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "node scripts/check-episodes.mjs",
+    "naskah": "node scripts/export-naskah.mjs"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.1.0",
+    "@react-three/fiber": "^8.17.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}
