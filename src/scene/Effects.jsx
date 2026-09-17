@@ -1,5 +1,5 @@
 // Partikel deterministik (bergantung waktu episode) supaya seek & rekam konsisten.
-import { useMemo, useRef } from 'react';
+import { memo, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -79,12 +79,13 @@ function Dust({ store }) {
   );
 }
 
-export function Effects({ fx, store }) {
+// Semua efek selalu terpasang (shader sudah siap), hanya disembunyikan kalau tidak dipakai.
+export const Effects = memo(function Effects({ fx, store, used }) {
   return (
     <>
-      {fx.includes('petals') && <Petals store={store} />}
-      {fx.includes('rain') && <Rain store={store} />}
-      {fx.includes('dust') && <Dust store={store} />}
+      {used.includes('petals') && <group visible={fx.includes('petals')}><Petals store={store} /></group>}
+      {used.includes('rain') && <group visible={fx.includes('rain')}><Rain store={store} /></group>}
+      {used.includes('dust') && <group visible={fx.includes('dust')}><Dust store={store} /></group>}
     </>
   );
-}
+});

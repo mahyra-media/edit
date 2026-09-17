@@ -4,6 +4,7 @@ import { buildEpisode } from '../engine/build.js';
 import { validateEpisode } from '../engine/validate.js';
 import { AudioEngine } from '../engine/audio.js';
 import { startRecording, downloadBlob } from '../engine/recorder.js';
+import { exportMp4, canExportMp4 } from '../engine/exporter.js';
 import { CHARACTERS } from '../data/characters.js';
 import { LOCATIONS } from '../data/locations.js';
 import { Studio } from '../scene/Studio.jsx';
@@ -20,8 +21,10 @@ const CAM = { wide: 'Lebar', medium: 'Medium', close: 'Close-up', xclose: 'Extre
 export default function App() {
   const audio = useMemo(() => new AudioEngine(), []);
   const store = useRef({ t: 0, playing: false, frame: null, onEnd: null }).current;
-  const canvasRef = useRef(null);
+  const compositeRef = useRef(null);
   const recRef = useRef(null);
+  const abortRef = useRef(null);
+  const [rendering, setRendering] = useState(null); // { p, label, eta }
 
   const [epIndex, setEpIndex] = useState(0);
   const [durations, setDurations] = useState({});
@@ -32,7 +35,7 @@ export default function App() {
   const [t, setT] = useState(0);
   const [lastRender, setLastRender] = useState(null);
   const [koreksi, setKoreksi] = useState(() => loadJSON(LS_KOREKSI, {}));
-  const [pref, setPref] = useState(() => ({ quality: 1.5, showSafe: true, rates: {}, ...loadJSON(LS_PREF, {}) }));
+  const [pref, setPref] = useState(() => ({ preview: 0.75, render: 1.5, showSafe: true, rates: {}, ...loadJSON(LS_PREF, {}) }));
   const [tab, setTab] = useState('adegan');
   const [audioVersion, setAudioVersion] = useState(0);
   const [storedKeys, setStoredKeys] = useState(() => new Set());
@@ -66,6 +69,9 @@ export default function App() {
     return () => clearInterval(id);
   }, [store]);
 
+  const busy = recording || !!rendering;
+  const fileName = (ext) => `${ep.id}-${ep.title.toLowerCase().replace(/\s+/g, '-')}.${ext}`;
+
   const stop = useCallback(async () => {
     const tt = audio.time();
     audio.stop();
@@ -75,6 +81,7 @@ export default function App() {
     if (recRef.current) {
       const rec = recRef.current;
       recRef.current = null;
+      store.recording = false;
       setRecording(false);
       const blob = await rec.stop();
       const name = `${ep.id}-${ep.title.toLowerCase().replace(/\s+/g, '-')}.${rec.ext}`;
@@ -92,15 +99,18 @@ export default function App() {
     setPlaying(true);
   }, [audio, store, ep]);
 
+  // Cadangan untuk browser tanpa WebCodecs: rekam real-time (bisa patah kalau komputer lambat)
   const record = useCallback(async () => {
-    if (!canvasRef.current) return;
+    if (!compositeRef.current) return;
     audio.ensure();
     store.playing = false;
     store.t = 0;
-    await new Promise((r) => setTimeout(r, 250)); // biar frame pertama sudah tergambar
+    store.recording = true;
+    await new Promise((r) => setTimeout(r, 300));
     try {
-      recRef.current = startRecording(canvasRef.current, audio.recDest.stream, 30);
+      recRef.current = startRecording(compositeRef.current, audio.recDest.stream, 30);
     } catch (e) {
+      store.recording = false;
       alert(e.message);
       return;
     }
@@ -109,8 +119,39 @@ export default function App() {
     await play(0);
   }, [audio, store, play]);
 
+  // Render frame-per-frame ke MP4: hasil selalu mulus 30 fps
+  const renderMp4 = useCallback(async () => {
+    audio.stop();
+    store.playing = false;
+    setPlaying(false);
+    setLastRender(null);
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setRendering({ p: 0, label: 'Menyiapkan...', eta: null });
+    await new Promise((r) => setTimeout(r, 400)); // tunggu kualitas render & mode frame aktif
+    try {
+      if (!store.renderAt) throw new Error('Panggung belum siap, coba lagi sebentar.');
+      const blob = await exportMp4({
+        ep,
+        audio,
+        canvas: compositeRef.current,
+        renderFrame: (tt) => store.renderAt(tt),
+        fps: 30,
+        signal: ac.signal,
+        onProgress: (p, label, eta) => setRendering({ p, label, eta }),
+      });
+      setLastRender({ blob, name: fileName('mp4'), url: URL.createObjectURL(blob), size: blob.size });
+    } catch (e) {
+      if (e.name !== 'AbortError') alert(`Render gagal: ${e.message}`);
+    } finally {
+      abortRef.current = null;
+      store.t = 0;
+      setRendering(null);
+    }
+  }, [audio, store, ep]);
+
   const seek = (v) => {
-    if (recording) return;
+    if (busy) return;
     if (store.playing) { audio.stop(); store.playing = false; setPlaying(false); }
     store.t = v;
     setT(v);
@@ -121,7 +162,8 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-      if (e.code === 'Space') { e.preventDefault(); if (recording) return; playing ? stop() : play(); }
+      if (busy) return;
+      if (e.code === 'Space') { e.preventDefault(); playing ? stop() : play(); }
       if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
         const i = cur ? cur.i : 0;
         const n = Math.max(0, Math.min(ep.shots.length - 1, i + (e.code === 'ArrowRight' ? 1 : -1)));
@@ -133,7 +175,7 @@ export default function App() {
   });
 
   const changeEp = (i) => {
-    if (recording) return;
+    if (busy) return;
     audio.stop();
     store.playing = false;
     store.t = 0;
@@ -149,8 +191,11 @@ export default function App() {
   return (
     <div className="app">
       <section className="left">
-        <Studio ep={ep} store={store} audio={audio} onStatus={onStatus} canvasRef={canvasRef}
-          quality={pref.quality} showSafe={pref.showSafe && !recording} />
+        <Studio ep={ep} store={store} audio={audio} onStatus={onStatus} compositeRef={compositeRef}
+          quality={rendering ? pref.render : pref.preview}
+          frameloop={rendering ? 'never' : 'always'}
+          sepia={!!cur?.fx.includes('sepia')}
+          showSafe={pref.showSafe && !busy} />
       </section>
 
       <section className="right">
@@ -161,35 +206,67 @@ export default function App() {
         </header>
 
         <div className="row">
-          <select value={epIndex} onChange={(e) => changeEp(+e.target.value)} disabled={recording}>
+          <select value={epIndex} onChange={(e) => changeEp(+e.target.value)} disabled={busy}>
             {EPISODES.map((e, i) => <option key={e.id} value={i}>Ep {e.no} — {e.title}</option>)}
           </select>
         </div>
 
         <div className="transport">
-          <button className="btn primary" disabled={recording} onClick={() => (playing ? stop() : play())}>
+          <button className="btn primary" disabled={busy} onClick={() => (playing ? stop() : play())}>
             {playing ? '❚❚ Jeda' : '▶ Putar'}
           </button>
-          <button className={`btn ${recording ? 'danger' : 'rec'}`} onClick={() => (recording ? stop() : record())}>
-            {recording ? '■ Hentikan rekaman' : '● Rekam episode'}
-          </button>
+          {canExportMp4() ? (
+            <button className="btn rec" disabled={busy || !audioInfo} onClick={renderMp4}>🎬 Render video MP4</button>
+          ) : (
+            <button className={`btn ${recording ? 'danger' : 'rec'}`} disabled={!!rendering} onClick={() => (recording ? stop() : record())}>
+              {recording ? '■ Hentikan rekaman' : '● Rekam episode'}
+            </button>
+          )}
           <span className="time">{t.toFixed(1)} / {ep.total.toFixed(1)} dtk</span>
         </div>
-        <input className="seek" type="range" min={0} max={ep.total} step={0.05} value={t} disabled={recording}
+        <input className="seek" type="range" min={0} max={ep.total} step={0.05} value={t} disabled={busy}
           onChange={(e) => seek(+e.target.value)} aria-label="Posisi waktu" />
 
+        {rendering && (
+          <div className="card render">
+            <div className="row between">
+              <strong>Merender video… {Math.round(rendering.p * 100)}%</strong>
+              <button className="btn danger" onClick={() => abortRef.current?.abort()}>Batal</button>
+            </div>
+            <div className="bar"><div style={{ width: `${rendering.p * 100}%` }} /></div>
+            <p className="muted small">
+              {rendering.label}{rendering.eta != null ? ` · sisa ± ${Math.ceil(rendering.eta)} dtk` : ''}.
+              Setiap frame digambar satu per satu, jadi hasilnya mulus walaupun preview terlihat lambat. Biarkan tab ini tetap terbuka.
+            </p>
+          </div>
+        )}
+
+        {!canExportMp4() && (
+          <p className="small err">
+            Browser ini belum mendukung render MP4 frame-per-frame, jadi memakai rekam real-time (bisa patah-patah).
+            Untuk hasil mulus pakai Chrome atau Edge versi terbaru di komputer.
+          </p>
+        )}
+
         <div className="row prefs">
-          <label>Kualitas
-            <select value={pref.quality} disabled={recording} onChange={(e) => setPref({ ...pref, quality: +e.target.value })}>
-              <option value={0.6}>Ringan (preview cepat)</option>
+          <label>Preview
+            <select value={pref.preview} disabled={busy} onChange={(e) => setPref({ ...pref, preview: +e.target.value })}>
+              <option value={0.5}>Sangat ringan</option>
+              <option value={0.75}>Ringan (disarankan)</option>
               <option value={1}>Normal</option>
-              <option value={1.5}>Halus (disarankan untuk rekam)</option>
-              <option value={2}>Sangat halus (butuh GPU kuat)</option>
+              <option value={1.5}>Halus (butuh GPU kuat)</option>
+            </select>
+          </label>
+          <label>Hasil video
+            <select value={pref.render} disabled={busy} onChange={(e) => setPref({ ...pref, render: +e.target.value })}>
+              <option value={1}>Normal (render cepat)</option>
+              <option value={1.5}>Halus (disarankan)</option>
+              <option value={2}>Sangat halus (render lama)</option>
             </select>
           </label>
           <label className="check">
             <input type="checkbox" checked={pref.showSafe} onChange={(e) => setPref({ ...pref, showSafe: e.target.checked })} />
-            Tampilkan zona aman Shorts
+            Zona aman Shorts
           </label>
         </div>
 
@@ -209,7 +286,7 @@ export default function App() {
             setRates={(rates) => setPref({ ...pref, rates: Object.fromEntries(Object.entries(rates).filter(([, v]) => v != null)) })}
             onChanged={bumpAudio}
             onPreview={(l) => { const T = Math.max(0, l.T - 0.4); seek(T); play(T); }}
-            disabled={recording}
+            disabled={busy}
           />
         )}
 
@@ -220,8 +297,8 @@ export default function App() {
             t={t}
             data={koreksi}
             setData={setKoreksi}
-            canvasRef={canvasRef}
-            disabled={recording}
+            snapshot={() => store.snapshot?.()}
+            disabled={busy}
           />
         )}
 
@@ -262,7 +339,7 @@ export default function App() {
         {tab === 'adegan' && <ol className="shots">
           {ep.shots.map((s) => (
             <li key={s.i}>
-              <button className={cur && cur.i === s.i ? 'on' : ''} onClick={() => seek(s.t + 0.001)} disabled={recording}>
+              <button className={cur && cur.i === s.i ? 'on' : ''} onClick={() => seek(s.t + 0.001)} disabled={busy}>
                 <span className="st">{s.t.toFixed(1)}s</span>
                 <span className="sb">
                   {s.beat && <em className={`beat ${s.beat}`}>{s.beat}</em>}

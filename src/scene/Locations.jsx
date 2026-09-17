@@ -1,6 +1,6 @@
 // Lokasi versi blockout (bentuk dasar). Ganti dengan model .glb buatan sendiri
 // kapan saja: cukup render <primitive object={gltf.scene}/> di komponen lokasinya.
-import { useMemo, useRef } from 'react';
+import { memo, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { toon, canvasTexture } from './materials.js';
@@ -20,6 +20,7 @@ const Plane = ({ p = [0, 0, 0], s = [1, 1], r = [0, 0, 0], c = '#ccc', map, basi
   </mesh>
 );
 const FLOOR = [-Math.PI / 2, 0, 0];
+const LAMP = new THREE.MeshBasicMaterial({ color: '#FFFFFF' });
 
 function useTex(key, w, h, draw, repeat) {
   return useMemo(() => {
@@ -139,7 +140,7 @@ function Lorong() {
           <Box p={[-1.57, 1.1, z]} s={[0.06, 0.05, 2.3]} c="#D0D0D0" />
           <Box p={[1.57, 1.0, z + 1]} s={[0.05, 2.0, 0.95]} c="#A27A52" />
           <Plane p={[1.54, 2.25, z + 1]} s={[0.5, 0.13]} r={[0, -Math.PI / 2, 0]} map={plate} basic />
-          <Box p={[0, 2.97, z]} s={[0.25, 0.04, 1.2]} mat={new THREE.MeshBasicMaterial({ color: '#FFFFFF' })} shadow={false} />
+          <Box p={[0, 2.97, z]} s={[0.25, 0.04, 1.2]} mat={LAMP} shadow={false} />
         </group>
       ))}
       <Box p={[-1.6, 0.06, -3]} s={[0.04, 0.12, 20]} c="#8A6A45" shadow={false} />
@@ -185,7 +186,7 @@ function Kelas() {
       <Box p={[3.17, 1.0, -2.4]} s={[0.05, 2, 0.9]} c="#A27A52" />
       <Box p={[1.1, 0.5, -2.95]} s={[1.2, 1.0, 0.5]} c="#9C7B58" />
       {desks.map(([x, z]) => <Desk key={`${x}${z}`} x={x} z={z} />)}
-      {[-1.2, 1.2].map((x) => <Box key={x} p={[x, 2.97, 0]} s={[0.2, 0.04, 1.4]} mat={new THREE.MeshBasicMaterial({ color: '#FFFFFF' })} shadow={false} />)}
+      {[-1.2, 1.2].map((x) => <Box key={x} p={[x, 2.97, 0]} s={[0.2, 0.04, 1.4]} mat={LAMP} shadow={false} />)}
     </group>
   );
 }
@@ -334,8 +335,9 @@ function GudangDalam({ store, ep }) {
 
 const MAP = { jalan_sakura: JalanSakura, genkan: Genkan, lorong: Lorong, kelas: Kelas, atap: Atap, gudang_luar: GudangLuar, gudang_dalam: GudangDalam };
 
-export function Location({ id, visible, store, ep }) {
+// memo: lokasi hanya dibangun sekali, tidak ikut render ulang saat UI berubah
+export const Location = memo(function Location({ id, visible, store, ep }) {
   const C = MAP[id];
   if (!C) return null;
-  return <group visible={visible}><C store={store} ep={ep} /></group>;
-}
+  return <group visible={visible} userData={{ location: id }}><C store={store} ep={ep} /></group>;
+});

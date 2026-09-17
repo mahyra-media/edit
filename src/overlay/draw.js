@@ -285,13 +285,16 @@ function drawVignette(g, strength = 0.6) {
   g.fillRect(0, 0, W, H);
 }
 
+// glCanvas = null → mode lapisan preview (transparan, sepia ditangani CSS)
 export function drawFrame(g, glCanvas, { ep, shot, lt, camera }) {
-  g.imageSmoothingEnabled = true;
-  g.imageSmoothingQuality = 'high';
-  g.drawImage(glCanvas, 0, 0, W, H);
+  if (glCanvas) {
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(glCanvas, 0, 0, W, H);
+  }
   const fx = shot.fx;
 
-  if (fx.includes('sepia')) {
+  if (glCanvas && fx.includes('sepia')) {
     g.save();
     g.globalCompositeOperation = 'color';
     g.fillStyle = 'rgba(150,100,50,0.75)';

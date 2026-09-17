@@ -1,5 +1,5 @@
 // Properti kecil di adegan: sepatu, pita, kunci, buku, HP, tas, gembok, kertas.
-import { useRef } from 'react';
+import { memo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { toon } from './materials.js';
@@ -109,6 +109,6 @@ function Prop({ p, shot, store }) {
   return <group ref={ref}><Model p={p} /></group>;
 }
 
-export function Props({ shot, store }) {
+export const Props = memo(function Props({ shot, store }) {
   return <>{shot.props.map((p, i) => <Prop key={`${shot.i}-${i}`} p={p} shot={shot} store={store} />)}</>;
-}
+});

@@ -12,9 +12,11 @@ button, select, input { font: inherit; color: inherit; }
 @media (max-width: 900px) { .app { grid-template-columns: 1fr; } }
 
 .left { position: sticky; top: 20px; }
-.stage { height: calc(100vh - 40px); aspect-ratio: 9 / 16; max-width: 100%; }
-.stage .view { width: 100%; height: 100%; display: block; border-radius: 14px; background: #000; box-shadow: 0 0 0 1px var(--line); }
-.gl-host { position: fixed; left: -20000px; top: 0; width: 1080px; height: 1920px; pointer-events: none; }
+.stage { height: calc(100vh - 40px); aspect-ratio: 9 / 16; max-width: 100%; overflow: hidden; border-radius: 14px; background: #000; box-shadow: 0 0 0 1px var(--line); }
+.scaler { position: relative; transform-origin: 0 0; }
+.scaler .overlay { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; pointer-events: none; }
+.scaler.sepia > div:first-child { filter: sepia(.85) saturate(.85) brightness(1.02); }
+@media (max-width: 900px) { .left { position: static; } .stage { height: auto; width: 100%; } }
 
 .right { display: flex; flex-direction: column; gap: 14px; }
 .eyebrow { margin: 0; color: var(--sakura); font-weight: 800; letter-spacing: .04em; font-size: 13px; }
@@ -100,3 +102,7 @@ textarea { width: 100%; background: var(--bg); border: 1px solid var(--line); bo
 .who { color: #fff; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 99px; }
 .lt { margin: 0; font-size: 17px; font-weight: 800; }
 .lines .btn { padding: 6px 10px; font-size: 13px; }
+
+.render { display: flex; flex-direction: column; gap: 8px; border-color: var(--sakura); }
+.bar { height: 10px; background: var(--bg); border-radius: 99px; overflow: hidden; }
+.bar > div { height: 100%; background: linear-gradient(90deg, var(--blue), var(--sakura)); transition: width 120ms linear; }

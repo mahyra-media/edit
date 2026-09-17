@@ -13,12 +13,12 @@ const EXPR_KEYS = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 const SIL_MAT = new THREE.MeshBasicMaterial({ color: '#05060a' });
 
-// Level bicara: dari analyser audio kalau ada file suara, kalau tidak pakai kepakan palsu
-function talkLevel(id, shot, lt, audio, playing) {
+// Level bicara: dari envelope rekaman (deterministik, ikut render MP4), kalau belum ada pakai kepakan perkiraan
+function talkLevel(id, shot, lt, audio) {
   for (const l of shot.lines) {
     if (l.who !== id || l.vo) continue;
     if (lt < l.at || lt > l.at + l.dur) continue;
-    if (l.hasAudio && playing) return audio.level(id);
+    if (l.hasAudio) return audio.mouth(l.file, l.who, lt - l.at);
     const n = countWords(l.text);
     const speakEnd = l.at + Math.min(l.dur, n * 0.36 + 0.3);
     if (lt > speakEnd) return 0;
@@ -330,7 +330,7 @@ export function Character({ id, ep, store, audio, onStatus }) {
     setSilhouette(!!c.silhouette);
 
     const w = exprWeights(c, lt);
-    const talk = talkLevel(id, shot, lt, audio, store.playing);
+    const talk = talkLevel(id, shot, lt, audio);
     const blink = w.happy > 0.7 ? 0 : blinkAt(T, id.length * 1.37);
 
     if (vrm) {
@@ -355,7 +355,7 @@ export function Character({ id, ep, store, audio, onStatus }) {
         em.setValue('aa', talk);
         em.setValue('blink', blink);
       }
-      vrm.update(Math.min(delta, 1 / 20));
+      vrm.update(Math.max(0, Math.min(delta, 1 / 20)));
     } else if (vrm === null) {
       posePlaceholder(rig, c.anim, lt, T);
       if (rig.face) drawFace(rig.face, def, w, talk, blink);

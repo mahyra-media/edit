@@ -23,10 +23,10 @@ Studio langsung bisa diputar tanpa aset apa pun: karakter tampil sebagai boneka 
 1. **Naskah** — edit `src/episodes/epXX.js`. Halaman ter-update otomatis, panel kanan menunjukkan apakah formula lolos.
 2. **Suara** — buka tab **🎙 Suara** di studio dan rekam tiap dialog langsung pakai mikrofon. Durasi shot menyesuaikan panjang suara dan mulut karakter mengikuti suara asli. Klik **Unduh semua suara (ZIP)** lalu ekstrak ke folder project supaya permanen.
 3. **Preview** — Spasi untuk putar, ← → untuk loncat shot, klik daftar shot untuk langsung ke adegan tertentu.
-4. **Rekam** — tombol "Rekam episode" memutar dari awal dan menyimpan video + audio. Chrome/Edge biasanya menghasilkan MP4; browser lain WebM (bisa dikonversi dengan HandBrake atau `ffmpeg -i in.webm -c:v libx264 -c:a aac out.mp4`).
+4. **Render** — tombol **🎬 Render video MP4** menggambar setiap frame satu per satu (30 fps) lalu menyimpannya langsung sebagai MP4 lengkap dengan suara. Karena waktunya dihitung per frame, hasilnya selalu mulus walaupun laptop lambat; hanya proses rendernya yang lebih lama. Butuh Chrome/Edge versi baru (browser lain memakai rekam real-time sebagai cadangan).
 5. **Upload** — judul ada di field `judulUpload` tiap episode.
 
-Tips perekaman: biarkan tab tetap terlihat dan jangan pindah jendela selama merekam, karena browser memperlambat tab yang tidak aktif. Kalau hasil patah-patah, rekam layar dengan OBS (Window Capture) sebagai alternatif.
+Pengaturan **Preview** hanya memengaruhi kelancaran saat menonton di studio. Pengaturan **Hasil video** menentukan kehalusan file MP4. Selama render, biarkan tab tetap terbuka.
 
 ## Struktur
 

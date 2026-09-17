@@ -33,7 +33,7 @@ export function exportText(eps, data) {
   return out.join('\n');
 }
 
-export function CorrectionPanel({ ep, shot, t, data, setData, canvasRef, disabled }) {
+export function CorrectionPanel({ ep, shot, t, data, setData, snapshot, disabled }) {
   const [copied, setCopied] = useState('');
   const row = data[ep.id]?.[shot.i] || {};
 
@@ -54,8 +54,9 @@ export function CorrectionPanel({ ep, shot, t, data, setData, canvasRef, disable
     update({ tags: [...tags] });
   };
 
-  const snap = () => {
-    canvasRef.current?.toBlob((b) => b && downloadBlob(b, `${ep.id}-shot${shot.i + 1}-${t.toFixed(1)}s.png`), 'image/png');
+  const snap = async () => {
+    const canvas = await snapshot();
+    canvas?.toBlob((b) => b && downloadBlob(b, `${ep.id}-shot${shot.i + 1}-${t.toFixed(1)}s.png`), 'image/png');
   };
 
   const copyAll = async () => {
