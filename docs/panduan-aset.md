@@ -69,10 +69,13 @@ Animasi yang belum ada otomatis diganti pose prosedural sederhana. Untuk menamba
 
 ## 3. Suara dialog
 
-- Daftar file per karakter ada di `docs/naskah-episode.md` (jalankan `npm run naskah` setelah mengubah naskah).
-- Format MP3 mono. Potong hening di awal dan akhir supaya timing pas.
-- Timeline otomatis memakai panjang file. Kalau dialog jadi terpotong, panel formula memberi peringatan; tambah nilai `d` shot itu.
-- Voice over sendiri paling aman untuk monetisasi. Kalau memakai TTS, pastikan lisensinya mengizinkan penggunaan komersial dan bedakan suara tiap karakter.
+**Cara termudah: rekam langsung di studio.** Buka tab **🎙 Suara**, klik **● Rekam** di tiap baris, ucapkan dialognya, lalu klik **■ Selesai**. Studio otomatis memotong hening, menyamakan volume, dan memanjangkan shot kalau suaranya lebih panjang dari rencana. Mulut karakter bergerak mengikuti suara asli.
+
+- Pakai earphone dan ruangan yang tenang. Mikrofon HP/earphone biasanya lebih jernih daripada mikrofon laptop.
+- Satu orang mengisi beberapa karakter? Atur **Nada suara per karakter** (mis. Mira 1.08×, Kenta 0.95×).
+- Rekaman tersimpan di browser. Klik **⬇ Unduh semua suara (ZIP)**, ekstrak ke folder project (file masuk ke `public/audio/epXX/`), lalu upload ke GitHub supaya permanen.
+- Merekam di aplikasi lain atau memakai TTS? Beri nama file sesuai kode baris (`L03_mira.mp3`) lalu pakai **📂 Impor banyak file**. Pastikan lisensi TTS mengizinkan penggunaan komersial.
+- Daftar kode baris per karakter ada di `docs/naskah-episode.md`.
 
 ## 4. Musik & efek suara
 

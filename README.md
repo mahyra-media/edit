@@ -21,7 +21,7 @@ Studio langsung bisa diputar tanpa aset apa pun: karakter tampil sebagai boneka 
 ## Alur produksi satu episode
 
 1. **Naskah** — edit `src/episodes/epXX.js`. Halaman ter-update otomatis, panel kanan menunjukkan apakah formula lolos.
-2. **Suara** — rekam dialog sesuai `docs/naskah-episode.md` (bagian "Daftar rekaman suara"), simpan ke `public/audio/epXX/`. Timeline otomatis menyesuaikan panjang file, mulut karakter mengikuti suara asli.
+2. **Suara** — buka tab **🎙 Suara** di studio dan rekam tiap dialog langsung pakai mikrofon. Durasi shot menyesuaikan panjang suara dan mulut karakter mengikuti suara asli. Klik **Unduh semua suara (ZIP)** lalu ekstrak ke folder project supaya permanen.
 3. **Preview** — Spasi untuk putar, ← → untuk loncat shot, klik daftar shot untuk langsung ke adegan tertentu.
 4. **Rekam** — tombol "Rekam episode" memutar dari awal dan menyimpan video + audio. Chrome/Edge biasanya menghasilkan MP4; browser lain WebM (bisa dikonversi dengan HandBrake atau `ffmpeg -i in.webm -c:v libx264 -c:a aac out.mp4`).
 5. **Upload** — judul ada di field `judulUpload` tiap episode.
@@ -75,6 +75,14 @@ Posisi kamera awal dibuat otomatis; kalau framing kurang pas, atur `angle`, `dis
 
 ## Simpan di GitHub
 
+**Cara paling mudah: GitHub Desktop** (tanpa perintah, semua file & folder sekaligus).
+
+1. Install GitHub Desktop, login, lalu *File → Clone repository* → pilih repo ini.
+2. Salin/ekstrak file project ke folder hasil clone (timpa file lama).
+3. GitHub Desktop otomatis menampilkan semua perubahan. Isi ringkasan di kiri bawah → **Commit to main** → **Push origin**.
+
+Alternatif lewat terminal:
+
 Buat repository **private** (animasi Mixamo dan musik berlisensi tidak boleh dibagikan ulang, walau sudah di-ignore).
 
 ```bash
@@ -97,3 +105,14 @@ Atau dengan GitHub CLI: `gh repo create bunga-di-balik-kaca --private --source=.
 - Jangan pakai nama game lain di judul, deskripsi, atau tag.
 - Bullying ditampilkan tanpa kekerasan eksplisit; hubungan antar tokoh pelajar tetap wajar (tanpa romansa berlebihan).
 - Set audiens video sesuai target yang sebenarnya.
+
+## Panel koreksi (untuk merapikan framing)
+
+Di bawah tombol putar ada **Koreksi shot**, yang selalu mengikuti shot yang sedang tampil:
+
+- Slider jarak, putar, tinggi, dan lebar lensa. Perubahan langsung terlihat dan ikut terekam.
+- Tombol label masalah (terlalu dekat, teks ketutup, dll.) plus kolom catatan.
+- **📸 Simpan gambar frame** untuk screenshot 1080×1920.
+- **Salin semua koreksi** menyalin ringkasan + JSON. Tempel ke chat supaya koreksinya dimasukkan permanen ke naskah.
+
+Koreksi tersimpan di browser (localStorage), jadi tidak hilang saat halaman dimuat ulang. Centang **zona aman Shorts** untuk melihat area yang nanti tertutup tombol dan judul YouTube (garis ini tidak ikut terekam).

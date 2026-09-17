@@ -46,8 +46,8 @@ export function validateEpisode(ep) {
       if (!CHARACTERS[l.who]) errors.push(`${at(s)}: pembicara "${l.who}" tidak ada`);
       const n = countWords(l.text);
       if (n > WORDS_MAX) errors.push(`${at(s)}: dialog ${n} kata (maks ${WORDS_MAX}): "${l.text}"`);
-      if (l.at + l.dur > s.d + 0.05) warns.push(`${at(s)}: dialog ${l.who} terpotong (${(l.at + l.dur).toFixed(1)}s > ${s.d}s)`);
     }
+    if (s.d > s.plannedD + 0.05) warns.push(`${at(s)}: diperpanjang ${s.plannedD}s → ${s.d.toFixed(1)}s mengikuti panjang dialog`);
     if (s.d < 1.5) warns.push(`${at(s)}: shot terlalu pendek`);
   }
   return { errors, warns, ok: errors.length === 0 };

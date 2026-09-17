@@ -20,49 +20,51 @@ function subject(shot, id, lt) {
 // noise halus deterministik
 const wobble = (t, s) => Math.sin(t * 1.7 + s) * 0.6 + Math.sin(t * 3.1 + s * 2) * 0.4;
 
-export function computeCamera(shot, lt, epT) {
+// ov = koreksi dari panel studio: { zoom, angle, dy, fov }
+export function computeCamera(shot, lt, epT, ov = {}) {
   const cam = shot.cam;
+  const Z = ov.zoom ?? 1;
   const kind = cam.s || 'wide';
   const ids = Object.keys(shot.cast);
   const on = subject(shot, cam.on || ids[0], lt);
-  const yaw = (on ? on.yaw : 0) + (cam.angle || 0);
+  const yaw = (on ? on.yaw : 0) + (cam.angle || 0) + (ov.angle || 0);
   const dir = dirFromYaw(yaw);
   let pos;
   let look;
 
   switch (kind) {
     case 'medium':
-      pos = on.head.clone().addScaledVector(dir, cam.dist ?? 2.1);
-      pos.y = on.head.y - 0.1;
-      look = on.head.clone().setY(on.head.y - 0.3);
+      pos = on.head.clone().addScaledVector(dir, (cam.dist ?? 2.9) * Z);
+      pos.y = on.head.y - 0.15;
+      look = on.head.clone().setY(on.head.y - 0.2);
       break;
     case 'close':
-      pos = on.head.clone().addScaledVector(dir, cam.dist ?? 0.95);
-      look = on.head.clone().setY(on.head.y - 0.08);
+      pos = on.head.clone().addScaledVector(dir, (cam.dist ?? 1.45) * Z);
+      look = on.head.clone().setY(on.head.y + 0.02);
       break;
     case 'xclose':
-      pos = on.head.clone().addScaledVector(dir, cam.dist ?? 0.5).add(V(0, 0.02, 0));
-      look = on.head.clone().setY(on.head.y + 0.02);
+      pos = on.head.clone().addScaledVector(dir, (cam.dist ?? 0.9) * Z).add(V(0, 0.02, 0));
+      look = on.head.clone().setY(on.head.y + 0.05);
       break;
     case 'ots': {
       const from = subject(shot, cam.from, lt);
       const toS = on.head.clone().sub(from.head).setY(0).normalize();
       const right = V(toS.z, 0, -toS.x);
-      pos = from.head.clone().addScaledVector(toS, -0.75).addScaledVector(right, cam.side ?? 0.35).add(V(0, 0.1, 0));
+      pos = from.head.clone().addScaledVector(toS, -1.0 * Z).addScaledVector(right, cam.side ?? 0.4).add(V(0, 0.12, 0));
       look = on.head.clone().setY(on.head.y - 0.05);
       break;
     }
     case 'low':
-      pos = on.pos.clone().addScaledVector(dir, cam.dist ?? 1.7).setY(0.3);
+      pos = on.pos.clone().addScaledVector(dir, (cam.dist ?? 2.4) * Z).setY(0.35);
       look = on.head.clone().setY(on.head.y - 0.1);
       break;
     case 'high':
-      pos = on.pos.clone().addScaledVector(dir, cam.dist ?? 1.4).setY(3.1);
+      pos = on.pos.clone().addScaledVector(dir, (cam.dist ?? 1.9) * Z).setY(3.3);
       look = on.pos.clone().setY(0.45);
       break;
     case 'insert': {
       const p = V(...cam.point);
-      pos = p.clone().add(V(...(cam.off || [0, 0.25, 0.7])));
+      pos = p.clone().add(V(...(cam.off || [0, 0.25, 0.7])).multiplyScalar(1.4 * Z));
       look = p;
       break;
     }
@@ -75,7 +77,9 @@ export function computeCamera(shot, lt, epT) {
       const all = ids.map((id) => subject(shot, id, lt));
       all.forEach((s) => c.add(s.pos));
       if (all.length) c.divideScalar(all.length);
-      pos = c.clone().addScaledVector(dirFromYaw(cam.angle || 0), cam.dist ?? 5.2).setY(cam.y ?? 1.55);
+      const spread = all.reduce((m, s) => Math.max(m, s.pos.distanceTo(c)), 0);
+      const auto = Math.max(5.5, 4 + spread * 2.6);
+      pos = c.clone().addScaledVector(dirFromYaw((cam.angle || 0) + (ov.angle || 0)), (cam.dist ?? auto) * Z).setY(cam.y ?? 1.6);
       look = c.clone().setY(1.05);
     }
   }
@@ -86,8 +90,8 @@ export function computeCamera(shot, lt, epT) {
   const toLook = look.clone().sub(pos);
   const side = V(toLook.z, 0, -toLook.x).normalize();
   switch (cam.m || 'drift') {
-    case 'push': pos.addScaledVector(toLook, 0.22 * amt * k); break;
-    case 'pull': pos.addScaledVector(toLook, 0.22 * amt * (1 - k) - 0.05 * amt); break;
+    case 'push': pos.addScaledVector(toLook, 0.12 * amt * k); break;
+    case 'pull': pos.addScaledVector(toLook, 0.12 * amt * (1 - k)); break;
     case 'pan': pos.addScaledVector(side, (k - 0.5) * 0.6 * amt); look.addScaledVector(side, (k - 0.5) * 0.3 * amt); break;
     case 'orbit': {
       const off = pos.clone().sub(look).applyAxisAngle(V(0, 1, 0), (k - 0.5) * 0.45 * amt);
@@ -101,6 +105,7 @@ export function computeCamera(shot, lt, epT) {
       break;
     default: pos.addScaledVector(toLook, 0.07 * k);
   }
+  if (ov.dy) { pos.y += ov.dy; look.y += ov.dy * 0.6; }
   // napas kamera (selalu ada)
   pos.x += wobble(epT, 3) * 0.006;
   pos.y += wobble(epT, 5) * 0.005;
@@ -110,7 +115,7 @@ export function computeCamera(shot, lt, epT) {
     const s = (0.6 - lt) * 0.08;
     pos.add(V(Math.sin(lt * 90) * s, Math.cos(lt * 77) * s, 0));
   }
-  let fov = cam.fov ?? 40;
-  if (shot.fx.includes('zoom')) fov -= 8 * Math.max(0, 1 - lt / 0.35);
+  let fov = ov.fov ?? cam.fov ?? 50;
+  if (shot.fx.includes('zoom')) fov -= 6 * Math.max(0, 1 - lt / 0.35);
   return { pos, look, fov };
 }

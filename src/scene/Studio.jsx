@@ -4,7 +4,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { LOCATIONS, MOODS } from '../data/locations.js';
 import { shotIndexAt } from '../engine/build.js';
 import { computeCamera } from '../engine/camera.js';
-import { drawFrame, W, H } from '../overlay/draw.js';
+import { drawFrame, W, H, SAFE } from '../overlay/draw.js';
 import { Character } from './Character.jsx';
 import { Location } from './Locations.jsx';
 import { Effects } from './Effects.jsx';
@@ -16,7 +16,7 @@ function Lights({ mood }) {
   useEffect(() => {
     const s = sun.current;
     if (!s) return;
-    s.shadow.mapSize.set(2048, 2048);
+    s.shadow.mapSize.set(4096, 4096);
     Object.assign(s.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 0.5, far: 30 });
     s.shadow.camera.updateProjectionMatrix();
     s.shadow.bias = -0.0008;
@@ -55,7 +55,8 @@ function World({ ep, store, audio, viewCanvas, onStatus }) {
     const lt = t - shot.t;
     store.frame = { t, i, lt };
 
-    const c = computeCamera(shot, lt, t);
+    const ov = store.overrides?.[ep.id]?.[i] || {};
+    const c = computeCamera(shot, lt, t, ov);
     camera.position.copy(c.pos);
     camera.lookAt(c.look);
     if (camera.fov !== c.fov) { camera.fov = c.fov; camera.updateProjectionMatrix(); }
@@ -77,7 +78,18 @@ function World({ ep, store, audio, viewCanvas, onStatus }) {
   );
 }
 
-export function Studio({ ep, store, audio, onStatus, canvasRef }) {
+function SafeZone() {
+  const pct = (v, total) => `${(v / total) * 100}%`;
+  return (
+    <div className="safe" aria-hidden="true">
+      <div className="safe-top" style={{ height: pct(SAFE.top, H) }}><span>tertutup UI atas</span></div>
+      <div className="safe-bottom" style={{ top: pct(SAFE.bottom, H) }}><span>judul, deskripsi, musik</span></div>
+      <div className="safe-right" style={{ top: pct(1000, H), bottom: pct(H - SAFE.bottom, H), width: pct(150, W) }}><span>tombol</span></div>
+    </div>
+  );
+}
+
+export function Studio({ ep, store, audio, onStatus, canvasRef, quality = 1, showSafe = false }) {
   const [view, setView] = useState(null);
   return (
     <div className="stage">
@@ -87,12 +99,13 @@ export function Studio({ ep, store, audio, onStatus, canvasRef }) {
         height={H}
         className="view"
       />
-      <div className="gl-host" aria-hidden="true">
+      {showSafe && <SafeZone />}
+      <div className="gl-host" aria-hidden="true" style={{ width: W, height: H }}>
         {view && (
           <Canvas
             key={ep.id}
-            dpr={1}
-            shadows
+            dpr={quality}
+            shadows="soft"
             flat
             gl={{ antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' }}
             camera={{ fov: 40, near: 0.03, far: 200, position: [0, 1.5, 5] }}

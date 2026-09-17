@@ -23,7 +23,7 @@ export default {
       lines: [{ who: 'sae', text: 'Hana Aozora, murid beasiswa baru kita.', note: 'ramah, formal' }],
     },
     {
-      d: 3.8, loc: 'kelas',
+      d: 4.0, loc: 'kelas',
       cam: { s: 'close', on: 'mira', m: 'push' },
       cast: {
         mira: { at: 'mira', face: 'hana', anim: 'sit', expr: 'smirk' },

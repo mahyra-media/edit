@@ -34,13 +34,11 @@ export function buildEpisode(raw, audioDur = {}) {
   const animsByChar = {};
   const lastPos = {}; // posisi terakhir tiap karakter (untuk face ke karakter di luar frame)
   const shots = raw.shots.map((s, i) => {
-    const shot = { ...s, i, t, d: s.d, cam: s.cam || {}, fx: s.fx || [], props: s.props || [] };
-    t += s.d;
+    const shot = { ...s, i, cam: s.cam || {}, fx: s.fx || [], props: s.props || [] };
 
     // posisi pemeran
     const cast = {};
-    const entries = Object.entries(s.cast || {});
-    for (const [id, c] of entries) {
+    for (const [id, c] of Object.entries(s.cast || {})) {
       const at = resolvePoint(c.at ?? 'A', s.loc);
       const to = c.to != null ? resolvePoint(c.to, s.loc) : null;
       cast[id] = { anim: 'idle', expr: 'neutral', ...c, at, to };
@@ -58,18 +56,28 @@ export function buildEpisode(raw, audioDur = {}) {
     for (const [id, c] of Object.entries(cast)) lastPos[id] = c.to || c.at;
     shot.cast = cast;
 
-    // dialog berurutan dalam satu shot
+    // dialog berurutan dalam satu shot.
+    // file = kunci suara TANPA ekstensi (dicari di browser, lalu public/<file>.mp3/.wav/.m4a)
     let cursor = 0.25;
     shot.lines = (s.lines || []).map((l) => {
       lineNo += 1;
-      const file = l.voice ?? `audio/${raw.id}/L${pad(lineNo)}_${l.who}.mp3`;
+      const file = l.voice ?? `audio/${raw.id}/L${pad(lineNo)}_${l.who}`;
       const dur = audioDur[file] ?? estimateSpeech(l.text);
       const at = l.at ?? cursor;
       cursor = at + dur + 0.15;
-      return { ...l, n: lineNo, file, dur, at, T: shot.t + at, hasAudio: file in audioDur };
+      return { ...l, n: lineNo, file, dur, at, hasAudio: file in audioDur };
     });
+
+    // shot memanjang otomatis kalau rekaman suara lebih panjang dari rencana
+    const lastEnd = shot.lines.reduce((m, l) => Math.max(m, l.at + l.dur), 0);
+    shot.plannedD = s.d;
+    shot.d = s.fit === false ? s.d : Math.max(s.d, lastEnd + 0.3);
+    shot.t = t;
+    t += shot.d;
+
     shot.lines.forEach((l, k) => {
       const next = shot.lines[k + 1];
+      l.T = shot.t + l.at;
       l.end = Math.min(l.at + l.dur + 0.6, next ? next.at : Infinity, shot.d);
     });
     shot.sfx = (s.sfx || []).map((x) => ({ at: 0, vol: 1, ...x, T: shot.t + (x.at || 0) }));

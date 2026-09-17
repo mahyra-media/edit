@@ -2,6 +2,10 @@
 // per karakter untuk lip-sync, dan stream audio untuk perekaman.
 // AudioContext.currentTime dipakai sebagai jam utama supaya gambar & suara sinkron.
 import { fetchAsset } from './asset.js';
+import { getVoice } from './voiceStore.js';
+
+const EXTS = ['.mp3', '.wav', '.m4a', '.ogg'];
+const hasExt = (p) => /\.[a-z0-9]{2,4}$/i.test(p);
 
 export class AudioEngine {
   constructor() {
@@ -10,6 +14,8 @@ export class AudioEngine {
     this.sources = [];
     this.analysers = {};
     this.startAt = 0;
+    this.rates = {}; // kecepatan/nada suara per karakter
+    this.preview = null;
     this._buf = new Uint8Array(512);
   }
 
@@ -38,9 +44,17 @@ export class AudioEngine {
   async load(path) {
     if (this.buffers.has(path)) return this.buffers.get(path);
     const p = (async () => {
-      const res = await fetchAsset(path);
-      if (!res) return null;
-      try { return await this.ctx.decodeAudioData(await res.arrayBuffer()); } catch { return null; }
+      let data = null;
+      const stored = await getVoice(path);
+      if (stored?.blob) data = await stored.blob.arrayBuffer();
+      if (!data) {
+        for (const c of hasExt(path) ? [path] : EXTS.map((e) => path + e)) {
+          const res = await fetchAsset(c);
+          if (res) { data = await res.arrayBuffer(); break; }
+        }
+      }
+      if (!data) return null;
+      try { return await this.ctx.decodeAudioData(data); } catch { return null; }
     })();
     this.buffers.set(path, p);
     const buf = await p;
@@ -48,17 +62,50 @@ export class AudioEngine {
     return buf;
   }
 
+  invalidate(path) {
+    this.buffers.delete(path);
+  }
+
+  rate(who) {
+    return this.rates[who] || 1;
+  }
+
   // Memuat semua audio episode. Mengembalikan durasi dialog untuk buildEpisode().
   async preload(ep) {
     this.ensure();
     const durations = {};
+    const whoOf = {};
+    ep.shots.forEach((s) => s.lines.forEach((l) => { whoOf[l.file] = l.who; }));
     let missing = 0;
+    let voices = 0;
     await Promise.all(ep.audioFiles.map(async (f) => {
       const b = await this.load(f);
-      if (b) durations[f] = b.duration;
-      else missing += 1;
+      if (!b) { missing += 1; return; }
+      if (whoOf[f]) { voices += 1; durations[f] = b.duration / this.rate(whoOf[f]); }
     }));
-    return { durations, missing, total: ep.audioFiles.length };
+    const lineCount = Object.keys(whoOf).length;
+    return { durations, missing, total: ep.audioFiles.length, voices, lineCount };
+  }
+
+  // Putar satu file (untuk panel suara)
+  async playOne(path, who) {
+    const ctx = this.ensure();
+    if (ctx.state !== 'running') await ctx.resume();
+    this.stopOne();
+    const buf = await this.load(path);
+    if (!(buf instanceof AudioBuffer)) return false;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = this.rate(who);
+    src.connect(this.master);
+    src.start();
+    this.preview = src;
+    return true;
+  }
+
+  stopOne() {
+    try { this.preview?.stop(); } catch { /* sudah berhenti */ }
+    this.preview = null;
   }
 
   async play(ep, fromT) {
@@ -68,14 +115,15 @@ export class AudioEngine {
     const now = ctx.currentTime + 0.08;
     this.startAt = now - fromT;
 
-    const sched = (buf, T, dest, gain = 1) => {
-      if (!(buf instanceof AudioBuffer) || T + buf.duration <= fromT) return;
+    const sched = (buf, T, dest, gain = 1, rate = 1) => {
+      if (!(buf instanceof AudioBuffer) || T + buf.duration / rate <= fromT) return;
       const src = ctx.createBufferSource();
       src.buffer = buf;
+      src.playbackRate.value = rate;
       const g = ctx.createGain();
       g.gain.value = gain;
       src.connect(g).connect(dest);
-      const offset = Math.max(0, fromT - T);
+      const offset = Math.max(0, fromT - T) * rate;
       src.start(Math.max(now, this.startAt + T), offset);
       this.sources.push(src);
     };
@@ -96,7 +144,7 @@ export class AudioEngine {
       this.sources.push(src);
     }
     for (const s of ep.shots) {
-      for (const l of s.lines) sched(this.buffers.get(l.file), l.T, this.analyser(l.who));
+      for (const l of s.lines) sched(this.buffers.get(l.file), l.T, this.analyser(l.who), 1, this.rate(l.who));
       for (const x of s.sfx) sched(this.buffers.get(x.src), x.T, this.master, x.vol);
     }
   }

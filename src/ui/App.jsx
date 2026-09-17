@@ -7,6 +7,13 @@ import { startRecording, downloadBlob } from '../engine/recorder.js';
 import { CHARACTERS } from '../data/characters.js';
 import { LOCATIONS } from '../data/locations.js';
 import { Studio } from '../scene/Studio.jsx';
+import { CorrectionPanel } from './CorrectionPanel.jsx';
+import { VoicePanel } from './VoicePanel.jsx';
+import { listVoiceKeys } from '../engine/voiceStore.js';
+
+const LS_KOREKSI = 'bdbk-koreksi';
+const LS_PREF = 'bdbk-pref';
+const loadJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 
 const CAM = { wide: 'Lebar', medium: 'Medium', close: 'Close-up', xclose: 'Extreme CU', ots: 'Over-shoulder', low: 'Low', high: 'High', insert: 'Insert', free: 'Bebas' };
 
@@ -24,6 +31,17 @@ export default function App() {
   const [recording, setRecording] = useState(false);
   const [t, setT] = useState(0);
   const [lastRender, setLastRender] = useState(null);
+  const [koreksi, setKoreksi] = useState(() => loadJSON(LS_KOREKSI, {}));
+  const [pref, setPref] = useState(() => ({ quality: 1.5, showSafe: true, rates: {}, ...loadJSON(LS_PREF, {}) }));
+  const [tab, setTab] = useState('adegan');
+  const [audioVersion, setAudioVersion] = useState(0);
+  const [storedKeys, setStoredKeys] = useState(() => new Set());
+  const bumpAudio = useCallback(() => setAudioVersion((v) => v + 1), []);
+  audio.rates = pref.rates || {};
+
+  store.overrides = koreksi;
+  useEffect(() => { try { localStorage.setItem(LS_KOREKSI, JSON.stringify(koreksi)); } catch { /* penyimpanan penuh/diblokir */ } }, [koreksi]);
+  useEffect(() => { try { localStorage.setItem(LS_PREF, JSON.stringify(pref)); } catch { /* abaikan */ } }, [pref]);
 
   const raw = EPISODES[epIndex];
   const ep = useMemo(() => buildEpisode(raw, durations), [raw, durations]);
@@ -38,8 +56,9 @@ export default function App() {
       setDurations(r.durations);
       setAudioInfo(r);
     });
+    listVoiceKeys().then((k) => alive && setStoredKeys(new Set(k)));
     return () => { alive = false; };
-  }, [raw, audio]);
+  }, [raw, audio, audioVersion, pref.rates]);
 
   // perbarui jam UI ~12x per detik
   useEffect(() => {
@@ -130,7 +149,8 @@ export default function App() {
   return (
     <div className="app">
       <section className="left">
-        <Studio ep={ep} store={store} audio={audio} onStatus={onStatus} canvasRef={canvasRef} />
+        <Studio ep={ep} store={store} audio={audio} onStatus={onStatus} canvasRef={canvasRef}
+          quality={pref.quality} showSafe={pref.showSafe && !recording} />
       </section>
 
       <section className="right">
@@ -158,6 +178,53 @@ export default function App() {
         <input className="seek" type="range" min={0} max={ep.total} step={0.05} value={t} disabled={recording}
           onChange={(e) => seek(+e.target.value)} aria-label="Posisi waktu" />
 
+        <div className="row prefs">
+          <label>Kualitas
+            <select value={pref.quality} disabled={recording} onChange={(e) => setPref({ ...pref, quality: +e.target.value })}>
+              <option value={0.6}>Ringan (preview cepat)</option>
+              <option value={1}>Normal</option>
+              <option value={1.5}>Halus (disarankan untuk rekam)</option>
+              <option value={2}>Sangat halus (butuh GPU kuat)</option>
+            </select>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={pref.showSafe} onChange={(e) => setPref({ ...pref, showSafe: e.target.checked })} />
+            Tampilkan zona aman Shorts
+          </label>
+        </div>
+
+        <div className="tabs" role="tablist">
+          <button role="tab" aria-selected={tab === 'adegan'} className={tab === 'adegan' ? 'on' : ''} onClick={() => setTab('adegan')}>🎬 Adegan & koreksi</button>
+          <button role="tab" aria-selected={tab === 'suara'} className={tab === 'suara' ? 'on' : ''} onClick={() => setTab('suara')}>
+            🎙 Suara {audioInfo ? `(${audioInfo.voices}/${audioInfo.lineCount})` : ''}
+          </button>
+        </div>
+
+        {tab === 'suara' && (
+          <VoicePanel
+            ep={ep}
+            audio={audio}
+            storedKeys={storedKeys}
+            rates={pref.rates || {}}
+            setRates={(rates) => setPref({ ...pref, rates: Object.fromEntries(Object.entries(rates).filter(([, v]) => v != null)) })}
+            onChanged={bumpAudio}
+            onPreview={(l) => { const T = Math.max(0, l.T - 0.4); seek(T); play(T); }}
+            disabled={recording}
+          />
+        )}
+
+        {tab === 'adegan' && cur && (
+          <CorrectionPanel
+            ep={ep}
+            shot={cur}
+            t={t}
+            data={koreksi}
+            setData={setKoreksi}
+            canvasRef={canvasRef}
+            disabled={recording}
+          />
+        )}
+
         {lastRender && (
           <div className="card ok">
             <strong>Render selesai</strong> · {(lastRender.size / 1048576).toFixed(1)} MB
@@ -180,8 +247,8 @@ export default function App() {
         <div className="card">
           <strong>Aset</strong>
           <p className="muted small">
-            Suara: {audioInfo ? `${audioInfo.total - audioInfo.missing}/${audioInfo.total} file ditemukan` : 'memuat...'}
-            {audioInfo?.missing ? ' — yang belum ada memakai lip-sync perkiraan.' : ''}
+            Dialog bersuara: {audioInfo ? `${audioInfo.voices}/${audioInfo.lineCount}` : 'memuat...'}
+            {audioInfo && audioInfo.voices < audioInfo.lineCount ? ' — rekam di tab Suara. Yang belum ada memakai lip-sync perkiraan.' : ''}
           </p>
           <div className="chips">
             {ep.castIds.map((id) => (
@@ -192,7 +259,7 @@ export default function App() {
           </div>
         </div>
 
-        <ol className="shots">
+        {tab === 'adegan' && <ol className="shots">
           {ep.shots.map((s) => (
             <li key={s.i}>
               <button className={cur && cur.i === s.i ? 'on' : ''} onClick={() => seek(s.t + 0.001)} disabled={recording}>
@@ -207,7 +274,7 @@ export default function App() {
               </button>
             </li>
           ))}
-        </ol>
+        </ol>}
         <p className="muted small">Spasi = putar/jeda · ← → = pindah shot · Edit naskah di <code>src/episodes/</code>, halaman ter-update otomatis.</p>
       </section>
     </div>

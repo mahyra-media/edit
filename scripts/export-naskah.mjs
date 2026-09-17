@@ -31,9 +31,9 @@ for (const raw of EPISODES) {
   md += `\n`;
 }
 
-md += `## Daftar rekaman suara\n\nSimpan tiap file di \`public/<nama file>\` (MP3 atau ubah ekstensi di naskah). Durasi dialog di timeline otomatis mengikuti panjang file.\n\n`;
+md += `## Daftar rekaman suara\n\nCara termudah: rekam langsung di studio (tab **🎙 Suara**). Kalau merekam di aplikasi lain, simpan sebagai \`public/<kode>.mp3\` atau \`.wav\`, atau impor lewat tombol *Impor banyak file* dengan nama file sesuai kode (mis. \`L03_mira.mp3\`). Durasi shot otomatis mengikuti panjang suara.\n\n`;
 for (const [who, lines] of Object.entries(rekaman)) {
-  md += `### ${CHARACTERS[who].name} (${lines.length} baris)\n\n| File | Dialog | Arahan |\n|---|---|---|\n`;
+  md += `### ${CHARACTERS[who].name} (${lines.length} baris)\n\n| Kode file | Dialog | Arahan |\n|---|---|---|\n`;
   for (const l of lines) md += `| \`${l.file}\` | ${esc(l.text)} | ${esc(l.note || '')} |\n`;
   md += `\n`;
 }
