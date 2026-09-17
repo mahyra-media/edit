@@ -1,0 +1,2 @@
+Taruh file FBX Mixamo di sini (tidak ikut di-commit ke Git).
+Daftar nama file: docs/panduan-aset.md
