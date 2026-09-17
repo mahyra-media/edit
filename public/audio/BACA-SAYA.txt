@@ -1,0 +1,3 @@
+Rekaman dialog: public/audio/ep01/L01_hana.mp3 dst.
+SFX: public/audio/sfx/  ·  BGM: public/audio/bgm/
+Daftar lengkap: docs/naskah-episode.md
