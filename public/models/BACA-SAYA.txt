@@ -1,0 +1,2 @@
+Taruh file VRM karakter di sini, contoh: hana.vrm, mira.vrm
+Daftar lengkap: docs/panduan-aset.md
